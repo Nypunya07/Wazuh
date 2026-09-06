@@ -4,19 +4,20 @@
 
 <p align="center">
 
-![Progress](https://img.shields.io/badge/Progress-In%20Progress-yellow)
-![Platform](https://img.shields.io/badge/Platform-Wazuh-blue)
+![Status](https://img.shields.io/badge/Status-In%20Progress-yellow)
+![SIEM](https://img.shields.io/badge/SIEM-Wazuh-blue)
+![Platform](https://img.shields.io/badge/OS-Windows%20%7C%20Linux-lightgrey)
 ![Domain](https://img.shields.io/badge/Domain-SOC%20Operations-red)
 
 </p>
 
 ---
 
-## 📖 About This Project
+## 📖 Overview
 
-This repository is a self-study guide for learning **Wazuh**, an open-source SIEM/XDR platform, from the ground up.
+This project demonstrates the deployment and configuration of a Security Information and Event Management (SIEM) environment using **Wazuh**. The lab focuses on centralized log collection, security monitoring, detection engineering, and threat analysis using Windows and Linux log sources.
 
-It's organized the way a fresher SOC analyst should actually learn the tool: understand the theory first (what Wazuh is, how it's built, what it can do), then work through a **beginner task list** to get comfortable navigating the dashboard, then move on to **intermediate practicals** that involve generating real alerts, writing detection rules, and practicing incident triage.
+The goal is to simulate real-world Security Operations Center (SOC) workflows including log analysis, alert triage, threat detection, and incident investigation.
 
 ---
 
@@ -51,19 +52,17 @@ By working through this repo, you should come away understanding:
 
 ## 📚 Table of Contents
 
-- [About This Project](#-about-this-project)
+- [Overview](#-overview)
 - [Objectives](#-objectives)
 - [Learning Outcomes](#-learning-outcomes)
 - [What is Wazuh?](#-what-is-wazuh)
 - [SIEM vs EDR vs XDR](#️-siem-vs-edr-vs-xdr)
 - [Wazuh Architecture](#️-wazuh-architecture)
+- [Event Processing Pipeline](#-event-processing-pipeline)
 - [Core Capabilities](#-core-capabilities)
 - [Rules, Decoders & Alerts](#-rules-decoders--alerts)
 - [Compliance Frameworks](#-compliance-frameworks)
 - [Deployment Methods](#-deployment-methods)
-- [Beginner Practical Tasks](#-beginner-practical-tasks)
-- [Intermediate SOC Analyst Practicals](#-intermediate-soc-analyst-practicals)
-- [Progress Tracker](#-progress-tracker)
 - [License](#-license)
 - [Author](#-author)
 
@@ -112,7 +111,6 @@ Wazuh is unusual in that a single open-source platform covers log-based SIEM det
 
 Wazuh follows a **manager–agent** model with a separate indexing and visualization layer.
 
-
 ```mermaid
 flowchart LR
     A[Wazuh Agent] -- "1514/tcp events" --> B[Wazuh Manager<br/>rules, decoders, active response]
@@ -124,11 +122,38 @@ flowchart LR
 
 ### Components
 
-- **Wazuh Agent** — lightweight software on the monitored endpoint (Windows/Linux/macOS). Collects logs, monitors files (FIM), runs vulnerability scans, executes SCA checks, and sends data securely to the manager.
-- **Wazuh Manager (Server)** — the brain of the deployment. Receives agent data, decodes and analyzes it using rules and decoders, generates alerts, manages agent registration and active response.
-- **Wazuh Indexer** — based on OpenSearch. Stores and indexes all alert/event data for fast searching.
-- **Filebeat** — ships alert data from the Manager to the Indexer.
-- **Wazuh Dashboard** — web UI for visualization, searching alerts, managing agents, and viewing modules like FIM, Vulnerability Detection, SCA, and MITRE ATT&CK.
+The platform consists of four main pieces:
+
+1. **Wazuh Manager** — the central analysis engine. It decodes logs, matches rules, generates alerts, and manages agents (registration, groups, active response). The manager also runs the **API** (TCP `55000`) used for remote management and for the Dashboard to query agent/alert data.
+2. **Wazuh Indexer** — a highly scalable search engine (based on OpenSearch) that stores alerts and raw events, enabling fast querying and aggregation.
+3. **Wazuh Dashboard** — the web-based UI for threat hunting, visualization, agent administration, and configuration. It queries the Indexer and displays results in real time.
+4. **Filebeat** — ships alert data from the Manager's output to the Indexer. (Optional in older versions — in modern Wazuh the Manager can push to the Indexer more directly — but it's still part of most default installs.)
+
+### How Agents Talk to the Manager
+
+Agents communicate with the Manager using **AES-256 encryption** over two TCP ports:
+- **Port `1514`** — ongoing event data
+- **Port `1515`** — one-time agent enrollment/registration
+
+The Manager's analysis engine processes incoming events through a pipeline of decoders and rules, stores alerts as flat JSON files, and forwards them to the Indexer. The Dashboard then queries the Indexer and presents everything in near real time.
+
+---
+
+## 🔄 Event Processing Pipeline
+
+Once an agent sends data, here's the exact path an event takes before it becomes something you see on the Dashboard:
+
+1. **Collection** — the agent collects log events (syslog, Windows Event Log, application logs) or audit-type events (FIM, registry changes).
+2. **Forwarding** — the event is sent encrypted over TCP to the Manager on port `1514` (agents use `1515` only for initial registration).
+3. **Pre-decoding** — the Manager extracts basic fields first: timestamp, hostname, program name.
+4. **Decoding** — the relevant decoder extracts more structured fields from the log (source IP, username, action taken, etc.).
+5. **Rule Matching** — the rule engine compares the decoded fields against its rule sets. If something matches, an alert is generated with a severity level and, where applicable, a MITRE ATT&CK tag.
+6. **Alert Enrichment** — extra context gets added, such as GeoIP lookups or threat intelligence data.
+7. **Output** — the alert is written to `/var/ossec/logs/alerts/alerts.json` and, if configured, forwarded on to the Indexer.
+8. **Indexing** — the Indexer stores the alert and makes it fully searchable.
+9. **Visualization** — the Dashboard queries the Indexer and displays the alert in tables, dashboards, and graphs.
+
+> 💡 **Tip:** Understanding this pipeline is fundamental for writing custom rules and troubleshooting false positives. Use `wazuh-logtest` to see exactly how a raw log gets processed, step by step, before it becomes an alert.
 
 ---
 
@@ -212,52 +237,6 @@ Alerts are automatically tagged with the relevant compliance requirement IDs, ma
 | **Cloud Deployment** | Cloud-hosted installation (AWS, Azure, GCP) | Cloud-native environments |
 
 Each method reaches the same end state — a Manager listening on 1514/1515 for agents — so the choice mostly comes down to how much you want to manage yourself versus how quickly you want something running.
-
----
-
-## 🟢 Beginner Practical Tasks
-
-Start by just **navigating the platform** — this is exactly how a Tier 1 SOC analyst spends their first days on the job. No configuration changes needed for most of these; just explore and take notes.
-
-- [ ] **Task 1 — Log In and Tour the Dashboard**: log in as `admin`, click through Threat Hunting, Integrity Monitoring, Vulnerability Detection, SCA, MITRE ATT&CK, and Agents. Write one sentence per module on what it's for.
-- [ ] **Task 2 — Check Agent Status**: find your agent under **Agents**, note its status, OS, IP, version, and which modules are enabled.
-- [ ] **Task 3 — Explore the Security Events Table**: sort by rule level, open the highest-severity alert, and identify `rule.id`, `rule.description`, `agent.name`.
-- [ ] **Task 4 — Understand Alert Anatomy**: locate `timestamp`, `rule.level`, `rule.groups`, `full_log`, `agent.name` in an alert and describe what happened in plain English.
-- [ ] **Task 5 — Browse Vulnerability Detection**: note how many vulnerabilities are found and the highest CVSS score present.
-- [ ] **Task 6 — Browse the MITRE ATT&CK View**: find one tactic and one technique, and note which alerts are already mapped to it.
-- [ ] **Task 7 — Check Agent Inventory**: review installed software, running processes, and open ports collected from the endpoint.
-- [ ] **Task 8 — Read (Don't Edit) an Existing Detection Rule**: find the rule that fired for the alert from Task 4, read its XML definition, and identify its condition, severity, and MITRE tag. This is your first exposure to detection engineering.
-
-> **Goal:** by the end, you should be able to answer "where do I find X in Wazuh?" without help.
-
----
-
-## 🟡 Intermediate SOC Analyst Practicals
-
-Once you're comfortable navigating the dashboard, these exercises involve generating real events, writing detections, and practicing triage.
-
-- [ ] **Practical 1 — Brute Force Simulation**: fail a login 5–6 times, then find and analyze the resulting alert (filter `rule.groups: authentication_failed`, MITRE tag T1110).
-- [ ] **Practical 2 — Successful Login Monitoring**: log in normally and inspect the resulting event's fields (`LogonType`, `TargetUserName`, `IpAddress`).
-- [ ] **Practical 3 — File Integrity Monitoring (FIM)**: configure FIM on a folder, then create/rename/delete a file inside it and confirm the alerts.
-- [ ] **Practical 4 — USB / Removable Device Detection**: attach a USB device and confirm the event is picked up (if configured).
-- [ ] **Practical 5 — PowerShell / Suspicious Command Detection**: enable PowerShell script block logging, run a safe test command, and see if it's flagged.
-- [ ] **Practical 6 — Vulnerability Detection**: pick one CVE from your agent's list, look it up, and write a one-paragraph mock vulnerability report.
-- [ ] **Practical 7 — Security Configuration Assessment (SCA)**: review 2–3 failed checks and write remediation steps.
-- [ ] **Practical 8 — Detection Engineering: Write a Custom Rule**: add a local rule (e.g., flag new local user creation), restart the manager, and confirm it fires.
-- [ ] **Practical 9 — Detection Engineering: Write a Custom Decoder**: write a decoder for a log line Wazuh doesn't parse cleanly, and test it with `wazuh-logtest`.
-- [ ] **Practical 10 — Detection Engineering: Alert Tuning**: narrow a noisy rule so it only fires on the intended condition, and document why.
-- [ ] **Practical 11 — Incident Triage Exercise**: pick any alert and run through Identify → Investigate → Correlate → Decide → Document.
-- [ ] **Practical 12 — Active Response (Optional, Advanced)**: configure an active response rule to auto-block an IP after repeated failed logins, and confirm it fires and is logged.
-
----
-
-## 📈 Progress Tracker
-
-| Section | Status |
-|---|---|
-| Theory (Sections 1–6) | ✅ Completed |
-| Beginner Practical Tasks | ⏳ In Progress |
-| Intermediate SOC Analyst Practicals | ⏳ Planned |
 
 ---
 
