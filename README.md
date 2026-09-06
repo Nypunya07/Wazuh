@@ -6,7 +6,7 @@
 
 ![Status](https://img.shields.io/badge/Status-In%20Progress-yellow)
 ![SIEM](https://img.shields.io/badge/SIEM-Wazuh-blue)
-![Platform](https://img.shields.io/badge/OS-Windows%20%7C%20Linux-lightgrey)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)
 ![Domain](https://img.shields.io/badge/Domain-SOC%20Operations-red)
 
 </p>
